@@ -26,7 +26,7 @@ PATH_LIST = {"ROOT_DIRECTORY" : '',
              "LOG_DIR_PATH" : '',
              "LOG_PATH" : '',
              "HEADER_PATH" : ''}
-ACCESS_TIMEOUT = 120
+ACCESS_TIMEOUT = 30
 MAX_TAB_NUM = 5
 
 DEFAULT_XVFB_WIN_W = 1280
@@ -99,14 +99,15 @@ def hs_main_page_get(driver, onion_address):
     return torSelEnum.TB_SEL_SUCCESS.value
 
 
-def reset_other_tabs(driver):
-    other_tab_idx = driver.window_handles
-    while len(other_tab_idx) > 1:
-        for tab_idx_num in range(1,len(other_tab_idx)):
-            driver.switch_to_window(other_tab_idx[tab_idx_num])
+def reset_other_tabs(driver, first_tab_idx):
+    other_tab_idx = driver.window_handles[1:]
+    while len(other_tab_idx) > 0:
+        for tab_idx in other_tab_idx:
+            driver.switch_to_window(tab_idx)
             driver.close()
-        other_tab_idx = driver.window_handles
-    driver.switch_to_window(other_tab_idx[0])
+        other_tab_idx = driver.window_handles[1:]
+
+    driver.switch_to_window(first_tab_idx)
 
 
 def page_crawler():
@@ -176,27 +177,34 @@ def page_crawler():
         # processed_address_num += 1
         # print("[CRAWL] ", processed_address_num, " address visited")
 
-        # 접속 가능한 사이트 주소의 리스트가 한번에 열 수 있는 탭 수 만큼 모이면 탭을 열고 페이지를 수집 후
-        # 열린 탭을 처음의 New tab만 빼고 모두 닫는다
+        # 접속 가능한 사이트 주소의 리스트가 한번에 열 수 있는 탭 수 만큼 모이면 큐의 주소 수만큼 빈 탭을 연다
+        # 빈 탭의 index(pre_tab_idx)를 확인 후 탭을 돌며 get으로 페이지를 연다.
+        # 새로 열린 탭
+        # 열린 탭의 index(after_tab_idx)를 확인 해
         if len(address_queue) == MAX_TAB_NUM or address_idx == len(reader_list)-1:
             # print("queue max")
-            for address in address_queue:
-                open_tab_script = "window.open(\""+address[0]+"\",\"_blank\");"
-                driver.execute_script(open_tab_script)
-            # print("open all queue")
-            sleep(5)
-            tab_idx_list = driver.window_handles
+            for count in range(len(address_queue)):
+                driver.execute_script("window.open();")
+            # print("open blank tab as address_queue number")
+
+            # 가장 처음 탭은 driver가 close 되지 않도록 빈 탭으로 사용하지 않음(2번째 탭 부터 사용)
+            first_tab_idx = driver.window_handles[0]
+            opened_tab_idx = driver.window_handles[1:]
+
+            for current_tab_idx in opened_tab_idx:
+                driver.switch_to.window(current_tab_idx)
+                get_onion_address = address_queue[opened_tab_idx.index(current_tab_idx)][0]
+                driver.get(get_onion_address)
+
             sleep(30)
-            # alert 창도 윈도우 핸들의 하나로 인식 -> 인덱스 아웃이 일어남
-            # alert 뜨기 전에 먼저 핸들을 가져올 필요 있음
+
             # print("get window")
-            for tab_idx_num in range(1, len(tab_idx_list)):
+            for current_tab_idx in opened_tab_idx:
                 # print("crawl page")
-                tab_idx = tab_idx_list[tab_idx_num]
                 try:
-                    driver.switch_to_window(tab_idx)
+                    driver.switch_to.window(current_tab_idx)
                 except SelWindowExcept:
-                    crawler_logging("a", "[TB_SEL_NO_SUCH_WINDOW_EXCEPT] : Current tab idx " + str(tab_idx_list) + "\n"
+                    crawler_logging("a", "[TB_SEL_NO_SUCH_WINDOW_EXCEPT] : Current tab idx " + str(current_tab_idx) + "\n"
                                     + "Current Queue " + str(address_queue) + "\n")
                     break
                 alert_present_check(driver)
@@ -204,22 +212,20 @@ def page_crawler():
                 # print("get title")
                 if page_title != 'Problem loading page':
                     # print(page_title," get source. tab index = ",tab_idx_num)
-                    address_queue[tab_idx_num - 1].append("live")
-                    address_queue[tab_idx_num - 1].append(str(torSelEnum.TB_SEL_SUCCESS.value))
+                    address_queue[opened_tab_idx.index(current_tab_idx)].append("live")
+                    address_queue[opened_tab_idx.index(current_tab_idx)].append(str(torSelEnum.TB_SEL_SUCCESS.value))
                     # print(page_title," result update")
-                    writer.writerow(address_queue[tab_idx_num - 1])
-                    with codecs.open(PATH_LIST["OUTPUT_HTML_DIR_PATH"] + "/" + address_queue[tab_idx_num - 1][0][7:23] + ".html", "w",
+                    writer.writerow(address_queue[opened_tab_idx.index(current_tab_idx)])
+                    with codecs.open(PATH_LIST["OUTPUT_HTML_DIR_PATH"] + "/" + address_queue[opened_tab_idx.index(current_tab_idx)][0][7:23] + ".html", "w",
                                      "utf-8") as html_writer:
                         html_writer.write(driver.page_source)
                 else:
                     # print("problem page")
-                    address_queue[tab_idx_num - 1].append("dead")
-                    address_queue[tab_idx_num - 1].append(str(torSelEnum.TB_SEL_UNDEFINED_EXCEPT.value))
-                    writer.writerow(address_queue[tab_idx_num - 1])
-                # print("page close")
-                driver.close()
+                    address_queue[opened_tab_idx.index(current_tab_idx)].append("dead")
+                    address_queue[opened_tab_idx.index(current_tab_idx)].append(str(torSelEnum.TB_SEL_UNDEFINED_EXCEPT.value))
+                    writer.writerow(opened_tab_idx.index(current_tab_idx))
             # print("reset focus")
-            reset_other_tabs(driver)
+            reset_other_tabs(driver, first_tab_idx)
             address_queue = []
 
     exit_crawler(driver, read_file, output_file)
@@ -229,8 +235,10 @@ def alert_present_check(driver):
     try:
         alert = driver.switch_to_alert()
         alert.accept()
+        return True
     except:
         print("no alert")
+        return False
 
 
 def dir_exist_check(dir_path):
