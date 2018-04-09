@@ -99,15 +99,18 @@ def hs_main_page_get(driver, onion_address):
     return torSelEnum.TB_SEL_SUCCESS.value
 
 
-def reset_other_tabs(driver, first_tab_idx):
+def reset_other_tabs(driver):
     other_tab_idx = driver.window_handles[1:]
     while len(other_tab_idx) > 0:
+        # print("while loop start")
         for tab_idx in other_tab_idx:
             driver.switch_to_window(tab_idx)
+            # print("close tab idx is " + str(tab_idx))
             driver.close()
         other_tab_idx = driver.window_handles[1:]
 
-    driver.switch_to_window(first_tab_idx)
+    # print("end while loop")
+    driver.switch_to_window(driver.window_handles[0])
 
 
 def page_crawler():
@@ -177,36 +180,44 @@ def page_crawler():
         # processed_address_num += 1
         # print("[CRAWL] ", processed_address_num, " address visited")
 
-        # 접속 가능한 사이트 주소의 리스트가 한번에 열 수 있는 탭 수 만큼 모이면 큐의 주소 수만큼 빈 탭을 연다
-        # 빈 탭의 index(pre_tab_idx)를 확인 후 탭을 돌며 get으로 페이지를 연다.
-        # 새로 열린 탭
-        # 열린 탭의 index(after_tab_idx)를 확인 해
+        # 접속 가능한 사이트 주소의 리스트가 MAX_TAB_NUM 만큼 큐에 쌓이면 MAX_TAB_NUM 개의 빈 탭을 연다
+        # blank_tab_idx로 빈탭의 index를 확인 후 빈 탭을 돌며 get()으로 페이지를 연다.
+        # get()으로 주소를 가져오면서 탭의 id가 바뀌므로 opened_tab_idx에 변경 된 탭 index를 넣는다.
+        # 30초 페이지 로드를 대기하고, opened_tab_idx 로 탭을 돌며 페이지를 저장
+        # reset_other_tabs를 통해 가장 처음 탭을 제외한 모든 탭을 닫는다.
         if len(address_queue) == MAX_TAB_NUM or address_idx == len(reader_list)-1:
             # print("queue max")
             for count in range(len(address_queue)):
+                # print("make tab "+str(count))
                 driver.execute_script("window.open();")
             # print("open blank tab as address_queue number")
 
             # 가장 처음 탭은 driver가 close 되지 않도록 빈 탭으로 사용하지 않음(2번째 탭 부터 사용)
-            first_tab_idx = driver.window_handles[0]
-            opened_tab_idx = driver.window_handles[1:]
+            blank_tab_idx = driver.window_handles[1:]
+            # print(blank_tab_idx)
 
-            for current_tab_idx in opened_tab_idx:
+            opened_tab_idx = []
+            for current_tab_idx in blank_tab_idx:
                 driver.switch_to.window(current_tab_idx)
-                get_onion_address = address_queue[opened_tab_idx.index(current_tab_idx)][0]
+                get_onion_address = address_queue[blank_tab_idx.index(current_tab_idx)][0]
+                # print(str(blank_tab_idx.index(current_tab_idx)) + " tab access " + get_onion_address+"\n this tab index is "+str(current_tab_idx))
                 driver.get(get_onion_address)
+                opened_tab_idx.append(driver.current_window_handle)
+                # print(str(driver.current_window_handle))
 
             sleep(30)
 
             # print("get window")
             for current_tab_idx in opened_tab_idx:
-                # print("crawl page")
+                # print("Try to move "+str(current_tab_idx)+" tab")
                 try:
                     driver.switch_to.window(current_tab_idx)
                 except SelWindowExcept:
+                    # print("Except!")
                     crawler_logging("a", "[TB_SEL_NO_SUCH_WINDOW_EXCEPT] : Current tab idx " + str(current_tab_idx) + "\n"
                                     + "Current Queue " + str(address_queue) + "\n")
                     break
+                # print("Success")
                 alert_present_check(driver)
                 page_title = driver.title
                 # print("get title")
@@ -225,7 +236,7 @@ def page_crawler():
                     address_queue[opened_tab_idx.index(current_tab_idx)].append(str(torSelEnum.TB_SEL_UNDEFINED_EXCEPT.value))
                     writer.writerow(opened_tab_idx.index(current_tab_idx))
             # print("reset focus")
-            reset_other_tabs(driver, first_tab_idx)
+            reset_other_tabs(driver)
             address_queue = []
 
     exit_crawler(driver, read_file, output_file)
