@@ -3,6 +3,8 @@
 Docker Image로 제작되어 컨테이너 환경에서 돌아가는 것을 전제로 작성 된 코드  
 필요한 Tor 브라우저 및 gecko driver의 경로 등은 Docker Image의 세팅을 따라감  
 
+Docker hub 링크 - https://hub.docker.com/r/larkjh/tbselcrawler
+
 * MS Azure나 AWS 환경에서 실행시키므로 Virtual Display 활성화 되어있음  
 * 최대 사용 탭 개수는 5개로 고정되어있음(MAX_TAB_NUM)  
 * 해당 변수는 input args로 조절 가능하게 고쳐야함
