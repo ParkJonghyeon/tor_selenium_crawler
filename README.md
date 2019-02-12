@@ -27,3 +27,12 @@ tor_pageCrawler_tab.py를 실행시키는데 필요한 input args로 사용할 �
     현재 버전에서는 중복 된 주소에 대해서 데이터 갱신이나 날짜별 데이터 생성이 아닌 append로 계속해서 한 파일에 추가 작성해나가도록 구현되어 있음
   * html_source_dir_<수집 날짜>에는 해당 날짜에 수집한 모든 다크 웹의 HTML 파일이 저장
   * log_dir에는 tor_visit_log_<주소 세트의 번호>.txt의 형태로 수집 시작 시간, 수집 종료 시간, 에러 로그 정보를 기록한 텍스트 파일 저장
+
+---
+
+# Dockerfile
+
+Dockerfile은 이미지에서 사용할 크롤러와 Tor 브라우저, Geckodriver를 로컬에서 COPY 명령어로 가져와서 사용 중  
+(Tor 브라우저의 경우 네트워크에서 wget 등으로 다운로드 시 크래시 나는 경우가 있음)  
+
+각각 Dockerfile과 동일한 경로상에 TBB, TBSEL, GECKO 디렉토리가 위치하고 각각 Tor 브라우저, tor_selenium_crawler, gecko driver의 압축 파일들이 위치하고 있어야함.
