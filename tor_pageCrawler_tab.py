@@ -10,23 +10,23 @@ import requests
 from selenium.common.exceptions import TimeoutException as SelTimeExcept
 from selenium.common.exceptions import WebDriverException as SelWebDriverExcept
 from selenium.common.exceptions import NoSuchWindowException as SelWindowExcept
-from selenium.common.exceptions import NoSuchElementException as SelElementExcept
 from selenium.webdriver.common.alert import Alert
 
 from tbselenium.tbdriver import TorBrowserDriver
 from tor_pageCrawler_enum import RequestsErrorCode as torReqEnum
 from tor_pageCrawler_enum import tbSeleniumErrorCode as torSelEnum
 
-PATH_LIST = {"ROOT_DIRECTORY": '',
-             "TBB_PATH": '',
-             "LINK_SET_PATH": '',
-             "OUTPUT_DIR_PATH": '',
-             "OUTPUT_FILE_PATH": '',
-             "OUTPUT_HTML_DIR_PATH": '',
-             "LOG_DIR_PATH": '',
-             "LOG_PATH": '',
-             "HEADER_PATH": ''}
-ACCESS_TIMEOUT = 30
+
+PATH_LIST = {"ROOT_DIRECTORY" : '',
+             "TBB_PATH" : '',
+             "LINK_SET_PATH" : '',
+             "OUTPUT_DIR_PATH" : '',
+             "OUTPUT_FILE_PATH" : '',
+             "OUTPUT_HTML_DIR_PATH" : '',
+             "LOG_DIR_PATH" : '',
+             "LOG_PATH" : '',
+             "HEADER_PATH" : ''}
+ACCESS_TIMEOUT = 120
 MAX_TAB_NUM = 5
 
 DEFAULT_XVFB_WIN_W = 1280
@@ -46,7 +46,7 @@ def tor_browser_open():
     open_tor_browser = False
     try_count = 0
     driver = None
-    while not open_tor_browser and try_count < 5:
+    while not open_tor_browser and try_count < 5 :
         try:
             print(try_count)
             try_count += 1
@@ -65,7 +65,7 @@ def hs_request_status_code(session, onion_address, header_list_file):
         hs_status_code = response.status_code
         hs_header = str(response.headers)
         # 같은 주소에 대해 변화가 있을 경우 갱신하는 식으로 코드 수정 필요함
-        header_list_file.write(onion_address + '\t' + hs_header + '\n')
+        header_list_file.write(onion_address+'\t'+hs_header+'\n')
     except requests.ConnectTimeout:
         # print("[REQ_ERROR] "+onion_address+" ConnectTimeout")
         return torReqEnum.REQ_CONNECT_TIMEOUT.value
@@ -100,28 +100,13 @@ def hs_main_page_get(driver, onion_address):
 
 
 def reset_other_tabs(driver):
-    other_tab_idx = driver.window_handles[1:]
-    while len(other_tab_idx) > 0:
-        # print("while loop start")
-        for tab_idx in other_tab_idx:
-            driver.switch_to_window(tab_idx)
-            # print("close tab idx is " + str(tab_idx))
+    other_tab_idx = driver.window_handles
+    while len(other_tab_idx) > 1:
+        for tab_idx_num in range(1,len(other_tab_idx)):
+            driver.switch_to_window(other_tab_idx[tab_idx_num])
             driver.close()
-        other_tab_idx = driver.window_handles[1:]
-
-    # print("end while loop")
-    driver.switch_to_window(driver.window_handles[0])
-
-
-def page_crash_check(driver):
-    reload_count = 3
-    try:
-        while driver.find_element_by_id('restoreTab') and reload_count > 0:
-            reload_count = reload_count - 1
-            driver.find_element_by_id('restoreTab').click()
-            sleep(30)
-    except SelElementExcept:
-        return
+        other_tab_idx = driver.window_handles
+    driver.switch_to_window(other_tab_idx[0])
 
 
 def page_crawler():
@@ -191,66 +176,48 @@ def page_crawler():
         # processed_address_num += 1
         # print("[CRAWL] ", processed_address_num, " address visited")
 
-        # 접속 가능한 사이트 주소의 리스트가 MAX_TAB_NUM 만큼 큐에 쌓이면 MAX_TAB_NUM 개의 빈 탭을 연다
-        # blank_tab_idx로 빈탭의 index를 확인 후 빈 탭을 돌며 get()으로 페이지를 연다.
-        # get()으로 주소를 가져오면서 탭의 id가 바뀌므로 opened_tab_idx에 변경 된 탭 index를 넣는다.
-        # 30초 페이지 로드를 대기하고, opened_tab_idx 로 탭을 돌며 페이지를 저장
-        # reset_other_tabs를 통해 가장 처음 탭을 제외한 모든 탭을 닫는다.
-        if len(address_queue) == MAX_TAB_NUM or address_idx == len(reader_list) - 1:
+        # 접속 가능한 사이트 주소의 리스트가 한번에 열 수 있는 탭 수 만큼 모이면 탭을 열고 페이지를 수집 후
+        # 열린 탭을 처음의 New tab만 빼고 모두 닫는다
+        if len(address_queue) == MAX_TAB_NUM or address_idx == len(reader_list)-1:
             # print("queue max")
-            for count in range(len(address_queue)):
-                # print("make tab "+str(count))
-                driver.execute_script("window.open();")
-            # print("open blank tab as address_queue number")
-
-            # 가장 처음 탭은 driver가 close 되지 않도록 빈 탭으로 사용하지 않음(2번째 탭 부터 사용)
-            blank_tab_idx = driver.window_handles[1:]
-            # print(blank_tab_idx)
-
-            opened_tab_idx = []
-            for current_tab_idx in blank_tab_idx:
-                driver.switch_to.window(current_tab_idx)
-                get_onion_address = address_queue[blank_tab_idx.index(current_tab_idx)][0]
-                # print(str(blank_tab_idx.index(current_tab_idx)) + " tab access " + get_onion_address+"\n this tab index is "+str(current_tab_idx))
-                driver.get(get_onion_address)
-                opened_tab_idx.append(driver.current_window_handle)
-                # print(str(driver.current_window_handle))
-
+            for address in address_queue:
+                open_tab_script = "window.open(\""+address[0]+"\",\"_blank\");"
+                driver.execute_script(open_tab_script)
+            # print("open all queue")
+            sleep(5)
+            tab_idx_list = driver.window_handles
             sleep(30)
-
+            # alert 창도 윈도우 핸들의 하나로 인식 -> 인덱스 아웃이 일어남
+            # alert 뜨기 전에 먼저 핸들을 가져올 필요 있음
             # print("get window")
-            for current_tab_idx in opened_tab_idx:
-                # print("Try to move "+str(current_tab_idx)+" tab")
+            for tab_idx_num in range(1, len(tab_idx_list)):
+                # print("crawl page")
+                tab_idx = tab_idx_list[tab_idx_num]
                 try:
-                    driver.switch_to.window(current_tab_idx)
+                    driver.switch_to_window(tab_idx)
                 except SelWindowExcept:
-                    # print("Except!")
-                    crawler_logging("a",
-                                    "[TB_SEL_NO_SUCH_WINDOW_EXCEPT] : Current tab idx " + str(current_tab_idx) + "\n"
+                    crawler_logging("a", "[TB_SEL_NO_SUCH_WINDOW_EXCEPT] : Current tab idx " + str(tab_idx_list) + "\n"
                                     + "Current Queue " + str(address_queue) + "\n")
                     break
-                # print("Success")
                 alert_present_check(driver)
                 page_title = driver.title
                 # print("get title")
                 if page_title != 'Problem loading page':
-                    page_crash_check(driver)
                     # print(page_title," get source. tab index = ",tab_idx_num)
-                    address_queue[opened_tab_idx.index(current_tab_idx)].append("live")
-                    address_queue[opened_tab_idx.index(current_tab_idx)].append(str(torSelEnum.TB_SEL_SUCCESS.value))
+                    address_queue[tab_idx_num - 1].append("live")
+                    address_queue[tab_idx_num - 1].append(str(torSelEnum.TB_SEL_SUCCESS.value))
                     # print(page_title," result update")
-                    writer.writerow(address_queue[opened_tab_idx.index(current_tab_idx)])
-                    with codecs.open(PATH_LIST["OUTPUT_HTML_DIR_PATH"] + "/" +
-                                             address_queue[opened_tab_idx.index(current_tab_idx)][0][7:23] + ".html",
-                                     "w",
+                    writer.writerow(address_queue[tab_idx_num - 1])
+                    with codecs.open(PATH_LIST["OUTPUT_HTML_DIR_PATH"] + "/" + address_queue[tab_idx_num - 1][0][7:23] + ".html", "w",
                                      "utf-8") as html_writer:
                         html_writer.write(driver.page_source)
                 else:
                     # print("problem page")
-                    address_queue[opened_tab_idx.index(current_tab_idx)].append("dead")
-                    address_queue[opened_tab_idx.index(current_tab_idx)].append(
-                        str(torSelEnum.TB_SEL_UNDEFINED_EXCEPT.value))
-                    writer.writerow(opened_tab_idx.index(current_tab_idx))
+                    address_queue[tab_idx_num - 1].append("dead")
+                    address_queue[tab_idx_num - 1].append(str(torSelEnum.TB_SEL_UNDEFINED_EXCEPT.value))
+                    writer.writerow(address_queue[tab_idx_num - 1])
+                # print("page close")
+                driver.close()
             # print("reset focus")
             reset_other_tabs(driver)
             address_queue = []
@@ -262,10 +229,8 @@ def alert_present_check(driver):
     try:
         alert = driver.switch_to_alert()
         alert.accept()
-        return True
     except:
         print("no alert")
-        return False
 
 
 def dir_exist_check(dir_path):
@@ -288,22 +253,20 @@ def exit_crawler(driver, read_file, output_file):
         read_file.close()
     if output_file:
         output_file.close()
-        # print("Closing tor_pageCrawler.py...")
+    # print("Closing tor_pageCrawler.py...")
 
 
 def crawling_env_init(machine_num):
     crawl_date = strftime('%Y%m%d%H', localtime(time()))
     PATH_LIST["ROOT_DIRECTORY"] = '/home/tordocker'
-    PATH_LIST["TBB_PATH"] = PATH_LIST["ROOT_DIRECTORY"] + '/tor-browser_en-US'
-    PATH_LIST["LINK_SET_PATH"] = PATH_LIST[
-                                     "ROOT_DIRECTORY"] + '/shared_dir/onion_link_set_dir/onion_link_set' + machine_num + '.tsv'
+    PATH_LIST["TBB_PATH"] = PATH_LIST["ROOT_DIRECTORY"]+'/tor-browser_en-US'
+    PATH_LIST["LINK_SET_PATH"] = PATH_LIST["ROOT_DIRECTORY"]+'/shared_dir/onion_link_set_dir/onion_link_set'+machine_num+'.tsv'
     PATH_LIST["OUTPUT_DIR_PATH"] = PATH_LIST["ROOT_DIRECTORY"] + '/shared_dir/output_dir'
-    PATH_LIST["OUTPUT_FILE_PATH"] = PATH_LIST["OUTPUT_DIR_PATH"] + '/output_' + machine_num + '_' + crawl_date + '.tsv'
-    PATH_LIST["OUTPUT_HTML_DIR_PATH"] = PATH_LIST["ROOT_DIRECTORY"] + '/shared_dir/html_source_dir_' + crawl_date
+    PATH_LIST["OUTPUT_FILE_PATH"] = PATH_LIST["OUTPUT_DIR_PATH"]+'/output_'+machine_num+'_'+crawl_date+'.tsv'
+    PATH_LIST["OUTPUT_HTML_DIR_PATH"] = PATH_LIST["ROOT_DIRECTORY"]+'/shared_dir/html_source_dir_'+crawl_date
     PATH_LIST["LOG_DIR_PATH"] = PATH_LIST["ROOT_DIRECTORY"] + '/shared_dir/log_dir'
-    PATH_LIST["LOG_PATH"] = PATH_LIST["LOG_DIR_PATH"] + '/tor_visit_log_' + machine_num + '.txt'
-    PATH_LIST["HEADER_PATH"] = PATH_LIST[
-                                   "ROOT_DIRECTORY"] + '/shared_dir/output_dir/hidden_service_header' + machine_num + '.tsv'
+    PATH_LIST["LOG_PATH"] = PATH_LIST["LOG_DIR_PATH"]+'/tor_visit_log_'+machine_num+'.txt'
+    PATH_LIST["HEADER_PATH"] = PATH_LIST["ROOT_DIRECTORY"] + '/shared_dir/output_dir/hidden_service_header'+machine_num+'.tsv'
 
 
 def main(machine_num):
@@ -312,12 +275,12 @@ def main(machine_num):
     dir_exist_check(PATH_LIST["OUTPUT_HTML_DIR_PATH"])
     dir_exist_check(PATH_LIST["LOG_DIR_PATH"])
     try:
-        crawler_logging("a+", "[START] : " + strftime('%Y/%m/%d-%H:%M:%S', localtime(time())) + "\n")
+        crawler_logging("a+", "[START] : "+strftime('%Y/%m/%d-%H:%M:%S', localtime(time()))+"\n")
         page_crawler()
     except:
         e_log = traceback.format_exc()
-        crawler_logging("a", "[ERROR_END] : " + strftime('%Y/%m/%d-%H:%M:%S', localtime(time())) + "\n" + e_log)
-    crawler_logging("a", "[END] : " + strftime('%Y/%m/%d-%H:%M:%S', localtime(time())) + "\n")
+        crawler_logging("a", "[ERROR_END] : " + strftime('%Y/%m/%d-%H:%M:%S', localtime(time()))+"\n"+e_log)
+    crawler_logging("a", "[END] : " + strftime('%Y/%m/%d-%H:%M:%S', localtime(time()))+"\n")
     print("tor crawling is ended")
 
 
